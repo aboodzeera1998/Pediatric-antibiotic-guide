@@ -1,0 +1,860 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { 
+  Search, 
+  ChevronRight, 
+  ChevronLeft, 
+  Menu, 
+  Info, 
+  ShieldAlert, 
+  Activity, 
+  Brain, 
+  Stethoscope, 
+  Baby, 
+  Pill, 
+  Bone, 
+  Droplets,
+  AirVent, // Corrected icon for Lungs/Respiratory System
+} from 'lucide-react';
+
+// --- MAX DOSES CONFIGURATION ---
+// Max doses are given as a CAP PER DOSE unless specified as a daily cap in the drug's 'calc' unit (mg/kg/day).
+const MAX_DOSES = {
+  // Max per dose in mg
+  "Augmentin": 2000,
+  "Clindamycin": 800, 
+  "Cefepime": 2000,
+  "Vancomycin": 1000, 
+  "Ceftriaxone": 2000,
+  "Amoxicillin": 1500,
+  "Cefuroxime": 500, // Oral Max
+  "Cefotaxime": 2000,
+  "Azithromycin": 500, // Max Daily Dose
+  "Tazocin": 4500,
+  "Meropenem": 2000,
+  "Gentamicin": 100,
+  "Metronidazole": 500,
+  "Nitrofurantoin": 100,
+  "TMP/SMX": 320, 
+  "Ceftazidime": 2000,
+  "Ampicillin": 2000,
+  "Acyclovir": 500, 
+};
+
+// --- DATA STRUCTURE ---
+const GUIDELINES_DATA = [
+  {
+    id: "general",
+    system: "General Rules",
+    icon: <Info className="w-8 h-8" />,
+    color: "bg-slate-100 text-slate-600",
+    conditions: [
+      {
+        name: "General Rules & Principles",
+        pathogens: "N/A",
+        treatment: "Obtain cultures prior to starting/modifying antibiotics.",
+        alternatives: "Tailor Abx to narrow spectrum once culture is ready.",
+        notes: [
+          "If serum trough level (Vanc, Gent) is indicated, do it before the 4th dose.",
+          "Do not postpone subsequent doses unless renal function is abnormal.",
+          "If renal function is abnormal: Do not administer until safe trough level confirmed.",
+          "Febrile Neutropenia applies to oncology patients only."
+        ]
+      }
+    ]
+  },
+  {
+    id: "skin",
+    system: "Skin & Soft Tissue",
+    icon: <Activity className="w-8 h-8" />,
+    color: "bg-pink-100 text-pink-600",
+    conditions: [
+      {
+        name: "Non-Purulent Cellulitis",
+        pathogens: "GAS, S. aureus",
+        treatment: "Augmentin 25 mg/kg/dose PO q12h",
+        calc: [{ drug: "Augmentin", dose: 25, unit: "mg/kg/dose", route: "PO", freq: "q12h" }],
+        alternatives: "",
+        notes: [
+          "Culture is typically not required for uncomplicated, non-purulent cellulitis, as the causative pathogen is rarely identified.",
+          "Always mark the borders of the redness to track improvement/deterioration accurately.",
+          "If rapid deterioration occurs or patient becomes septic, consider blood cultures and escalation of care."
+        ]
+      },
+      {
+        name: "Purulent Cellulitis / Abscesses",
+        pathogens: "S. aureus (including MRSA)",
+        treatment: "Incision and drainage (I&D) is the main treatment.",
+        alternatives: "Clindamycin 10 mg/kg/dose PO/IV q8h (only if indicated)",
+        calc: [{ drug: "Clindamycin", dose: 10, unit: "mg/kg/dose", route: "PO/IV", freq: "q8h" }],
+        notes: [
+          "Incision and drainage (I&D) is the primary management strategy.",
+          "Culture wound material/pus if I&D is performed to guide narrow-spectrum therapy.",
+          "Antibiotics are indicated for substantial surrounding cellulitis, large abscesses (>2cm), systemic signs of infection, or immunodeficiency."
+        ]
+      },
+      {
+        name: "Necrotizing Fasciitis",
+        pathogens: "GAS, S. aureus, E. coli, Pseudomonas, etc.",
+        treatment: "Cefepime 50 mg/kg/dose q8h + Vancomycin 15 mg/kg/dose q6h + Clindamycin 10 mg/kg/dose q8h",
+        calc: [
+          { drug: "Cefepime", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q8h" },
+          { drug: "Vancomycin", dose: 15, unit: "mg/kg/dose", route: "IV", freq: "q6h" },
+          { drug: "Clindamycin", dose: 10, unit: "mg/kg/dose", route: "IV", freq: "q8h" }
+        ],
+        alternatives: "",
+        notes: [
+          "This is a surgical emergency. STAT surgical consultation (pediatric/plastic surgery) is mandatory.",
+          "Obtain blood cultures and consult Infectious Diseases (ID) immediately.",
+          "Initiate aggressive fluid resuscitation and sepsis protocol, do not delay antibiotics."
+        ]
+      },
+      {
+        name: "Periorbital Cellulitis",
+        pathogens: "S. Pneumo, S. aureus, GAS",
+        treatment: "Clindamycin 10 mg/kg/dose PO/IV q8h",
+        calc: [{ drug: "Clindamycin", dose: 10, unit: "mg/kg/dose", route: "PO/IV", freq: "q8h" }],
+        alternatives: "",
+        notes: [
+          "Rule out progression to Orbital Cellulitis (pain with eye movement, proptosis, vision changes).",
+          "Ophthalmology consultation is recommended to confirm diagnosis and monitor for complications."
+        ]
+      },
+      {
+        name: "Orbital Cellulitis",
+        pathogens: "S. Pneumo, Moraxella, GAS, Anaerobes",
+        treatment: "Clindamycin 10 mg/kg/dose PO/IV q8h + Ceftriaxone 50 mg/kg/dose IV q12h",
+        calc: [
+          { drug: "Clindamycin", dose: 10, unit: "mg/kg/dose", route: "PO/IV", freq: "q8h" },
+          { drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" }
+        ],
+        alternatives: "",
+        notes: [
+          "Requires urgent admission, IV antibiotics, and imaging (CT/MRI) to assess for orbital abscess or cavernous sinus thrombosis.",
+          "Immediate consultation with Ophthalmology and ENT is required."
+        ]
+      },
+      {
+        name: "Impetigo / Folliculitis",
+        pathogens: "S. aureus, GAS",
+        treatment: "Augmentin 25 mg/kg/dose PO BID + Mupirocin topical",
+        calc: [{ drug: "Augmentin", dose: 25, unit: "mg/kg/dose", route: "PO", freq: "BID" }],
+        alternatives: "",
+        notes: [
+          "Topical Mupirocin may be sufficient for limited disease.",
+          "Systemic antibiotics (like Augmentin) are reserved for widespread lesions or failure of topical therapy."
+        ]
+      },
+      {
+        name: "Cervical Lymphadenitis",
+        pathogens: "S. aureus, GAS",
+        treatment: "Augmentin 25 mg/kg/dose PO BID",
+        calc: [{ drug: "Augmentin", dose: 25, unit: "mg/kg/dose", route: "PO", freq: "BID" }],
+        alternatives: "Clindamycin 10 mg/kg/dose PO/IV q8h",
+        notes: [
+          "If no improvement after 48-72 hours of appropriate therapy, consider non-bacterial causes (e.g., Cat-scratch disease, atypical mycobacteria) and imaging.",
+          "Aspiration for Gram stain and culture may be necessary if abscess formation is suspected."
+        ]
+      },
+      {
+        name: "Bites (Cats, Dogs, Humans)",
+        pathogens: "Pastorella, Eikenella, S. aureus, MRSA",
+        treatment: "Augmentin 25 mg/kg/dose PO BID",
+        calc: [{ drug: "Augmentin", dose: 25, unit: "mg/kg/dose", route: "PO", freq: "BID" }],
+        alternatives: "Severe: Augmentin 30 mg/kg/dose IV q8h",
+        notes: [
+          "Thorough irrigation and debridement of the wound is critical.",
+          "Tetanus prophylaxis status must be verified.",
+          "Avoid primary closure/suturing of cat bites and deep human bites due to high infection risk."
+        ]
+      }
+    ]
+  },
+  {
+    id: "ent",
+    system: "Head & Neck (ENT)",
+    icon: <Stethoscope className="w-8 h-8" />,
+    color: "bg-purple-100 text-purple-600",
+    conditions: [
+      {
+        name: "Otitis Media",
+        pathogens: "Pneumococcus, H. Influenzae, Moraxella",
+        treatment: "Amoxicillin 90 mg/kg/dose q8h OR Cefuroxime",
+        calc: [{ drug: "Amoxicillin", dose: 90, unit: "mg/kg/dose", route: "PO", freq: "q8h" }],
+        alternatives: "Recurrent: Augmentin. Severe: Cefotaxime",
+        notes: [
+          "Pain management (analgesia) is the priority.",
+          "Observation without antibiotics is a safe option for non-severe, non-high-risk patients >6 months if reliable follow-up is assured."
+        ]
+      },
+      {
+        name: "Acute Mastoiditis",
+        pathogens: "Pneumococcus, S. aureus, GAS, Pseudomonas",
+        treatment: "Clindamycin 10 mg/kg/dose q8h + Ceftriaxone 50 mg/kg/dose q12h",
+        calc: [
+          { drug: "Clindamycin", dose: 10, unit: "mg/kg/dose", route: "IV/PO", freq: "q8h" },
+          { drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" }
+        ],
+        alternatives: "",
+        notes: [
+          "Requires urgent ENT consultation for possible surgical intervention (myringotomy/mastoidectomy).",
+          "Obtain blood cultures and consider CT imaging to assess for subperiosteal abscess."
+        ]
+      },
+      {
+        name: "Acute Sinusitis",
+        pathogens: "Standard respiratory flora",
+        treatment: "1st line Amoxicillin, 2nd line Augmentin",
+        alternatives: "",
+        notes: [
+          "Treat only if symptoms are severe (fever >39C, purulent discharge, orbital swelling), or if persistent for more than 10 days.",
+          "Supportive care (saline rinses, analgesics) is crucial for viral or mild cases."
+        ]
+      },
+      {
+        name: "Pharyngitis",
+        pathogens: "GAS",
+        treatment: "Amoxicillin 45 mg/kg/day PO q8h (10 days)",
+        calc: [{ drug: "Amoxicillin", dose: 45, unit: "mg/kg/day", route: "PO", freq: "q8h (divide daily dose by 3)" }],
+        alternatives: "Cefuroxime. Allergy: Azithromycin 10 mg/kg/day (5 days)",
+        notes: [
+          "Must be confirmed by Rapid Strep Test or culture/PCR before initiating antibiotics.",
+          "The main goal of treatment is to prevent Acute Rheumatic Fever; ensure the 10-day course is completed."
+        ]
+      },
+      {
+        name: "Peritonsillar/Retropharyngeal Abscess",
+        pathogens: "Aerobic/Anaerobic flora, CA-MRSA",
+        treatment: "Clindamycin 10 mg/kg/dose q8h + Ceftriaxone 50 mg/kg/dose q12h",
+        calc: [
+          { drug: "Clindamycin", dose: 10, unit: "mg/kg/dose", route: "IV/PO", freq: "q8h" },
+          { drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" }
+        ],
+        alternatives: "",
+        notes: [
+          "Immediate ENT consultation is required.",
+          "Requires imaging (CT scan of neck with contrast) to confirm abscess size and location and guide drainage.",
+          "Monitor airway closely."
+        ]
+      },
+      {
+        name: "Tracheitis",
+        pathogens: "GAS, S. aureus, MRSA, Pneumococcus",
+        treatment: "Ceftriaxone 50 mg/kg/dose q12h + Vancomycin 15 mg/kg/dose q6h",
+        calc: [
+          { drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" },
+          { drug: "Vancomycin", dose: 15, unit: "mg/kg/dose", route: "IV", freq: "q6h" }
+        ],
+        alternatives: "",
+        notes: [
+          "This is a life-threatening condition requiring aggressive airway management and typically, admission to the Pediatric ICU.",
+          "Obtain tracheal aspirate and blood cultures."
+        ]
+      }
+    ]
+  },
+  {
+    id: "resp",
+    system: "Respiratory",
+    // Corrected to AirVent icon
+    icon: <AirVent className="w-8 h-8" />, 
+    color: "bg-blue-100 text-blue-600",
+    conditions: [
+      {
+        name: "Pneumonia (1-3 months)",
+        pathogens: "S. Pneumo, Chlamydia, Pertussis, S. Aureus",
+        treatment: "IV Ampicillin + Cefotaxime 50 mg/kg/dose q8h",
+        calc: [{ drug: "Cefotaxime", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q8h" }],
+        alternatives: "",
+        notes: [
+          "Infants in this age group are high risk for serious bacterial infection (SBI) and require IV admission.",
+          "Obtain Nasopharyngeal Aspirate (NPA) for respiratory viruses."
+        ]
+      },
+      {
+        name: "Pneumonia (3mo - 12yr)",
+        pathogens: "S. Pneumo, Mycoplasma, S. Aureus",
+        treatment: "Augmentin 25 mg/kg/dose q12h OR Cefuroxime 15 mg/kg/dose q12h",
+        calc: [
+          { drug: "Augmentin", dose: 25, unit: "mg/kg/dose", route: "PO", freq: "q12h" },
+          { drug: "Cefuroxime", dose: 15, unit: "mg/kg/dose", route: "PO", freq: "q12h" }
+        ],
+        alternatives: "",
+        notes: [
+          "Initial treatment is usually oral for stable, non-hypoxemic children.",
+          "Atypical coverage (Azithromycin) should be added if clinical suspicion is high (e.g., persistent cough, gradual onset)."
+        ]
+      },
+      {
+        name: "Atypical Pneumonia (3yr - 12yr)",
+        pathogens: "M. Pneumoniae",
+        treatment: "Azithromycin 10 mg/kg/day PO for 5 days",
+        calc: [{ drug: "Azithromycin", dose: 10, unit: "mg/kg/day", route: "PO", freq: "Once Daily" }],
+        alternatives: "",
+        notes: [
+          "Azithromycin is effective against Atypical Pathogens (Mycoplasma, Chlamydia).",
+          "Ensure no underlying cardiopulmonary disease that might complicate management."
+        ]
+      },
+      {
+        name: "Complicated Pneumonia",
+        pathogens: "S. Pneumo, S. Aureus, H. Flu, S. Pyogenes",
+        treatment: "Ceftriaxone 50 mg/kg/dose q12h + Vancomycin 15 mg/kg/dose q6h",
+        calc: [
+          { drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" },
+          { drug: "Vancomycin", dose: 15, unit: "mg/kg/dose", route: "IV", freq: "q6h" }
+        ],
+        alternatives: "Severely ill: Tazocin + Vancomycin",
+        notes: [
+          "Complicated means parapneumonic effusion, empyema, or lung necrosis.",
+          "Requires chest tube insertion and consultation with Pediatric Surgery/Infectious Diseases."
+        ]
+      },
+      {
+        name: "Nosocomial / Ventilator Associated",
+        pathogens: "Pseudomonas, Enterobacter, Klebsiella",
+        treatment: "Tazocin 100 mg/kg/dose q8h + Vancomycin 15 mg/kg/dose q6h",
+        calc: [
+          { drug: "Tazocin", dose: 100, unit: "mg/kg/dose", route: "IV", freq: "q8h" },
+          { drug: "Vancomycin", dose: 15, unit: "mg/kg/dose", route: "IV", freq: "q6h" }
+        ],
+        alternatives: "",
+        notes: [
+          "Obtain respiratory cultures (Endotracheal Aspirate or Bronchoalveolar Lavage) prior to administration.",
+          "Empiric coverage must target multi-drug resistant organisms (MDROs) like Pseudomonas and MRSA."
+        ]
+      },
+      {
+        name: "Aspiration Pneumonia",
+        pathogens: "Anaerobes",
+        treatment: "Augmentin 30 mg/kg/dose q8h",
+        calc: [{ drug: "Augmentin", dose: 30, unit: "mg/kg/dose", route: "IV", freq: "q8h" }],
+        alternatives: "Clindamycin",
+        notes: [
+          "Aspiration is common in children with underlying neurological impairment or swallowing dysfunction.",
+          "Clindamycin is a key alternative as it provides excellent anaerobic coverage."
+        ]
+      }
+    ]
+  },
+  {
+    id: "gi",
+    system: "Gastrointestinal",
+    icon: <Baby className="w-8 h-8" />,
+    color: "bg-orange-100 text-orange-600",
+    conditions: [
+      {
+        name: "Enterocolitis (Neonates/NEC)",
+        pathogens: "Enteric GNR, Enterococcus, Anaerobes",
+        treatment: "IV Ampicillin + Gentamicin +/- Metronidazole",
+        alternatives: "Severely ill: Vancomycin + Meropenem",
+        notes: [
+          "Often associated with Necrotizing Enterocolitis (NEC) in neonates—requires urgent Pediatric Surgery consult.",
+          "Discontinue feeds and initiate bowel rest.",
+          "Obtain blood cultures and abdominal X-rays (for pneumatosis intestinalis)."
+        ]
+      },
+      {
+        name: "C. Difficile Enterocolitis",
+        pathogens: "C. Difficile",
+        treatment: "Metronidazole 10 mg/kg/dose PO/IV q8h",
+        calc: [{ drug: "Metronidazole", dose: 10, unit: "mg/kg/dose", route: "PO/IV", freq: "q8h" }],
+        alternatives: "",
+        notes: [
+          "Discontinue the offending antibiotic immediately.",
+          "Check for C. difficile toxin in stool.",
+          "Metronidazole (IV) is used for severe/fulminant disease; Oral Vancomycin/Fidaxomicin is preferred for non-severe recurrence."
+        ]
+      },
+      {
+        name: "Peritonitis (Primary)",
+        pathogens: "S. Pneumo, GNR",
+        treatment: "Ceftriaxone 50 mg/kg/dose IV q12h",
+        calc: [{ drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" }],
+        alternatives: "",
+        notes: [
+          "Often seen in patients with ascites (e.g., liver disease, nephrotic syndrome).",
+          "Diagnosis confirmed by ascitic fluid culture (often S. pneumoniae).",
+          "If no improvement in 48-72h, consider secondary peritonitis."
+        ]
+      },
+      {
+        name: "Peritonitis (Secondary)",
+        pathogens: "GNR, Anaerobes",
+        treatment: "Ampicillin 50mg/kg q6h + Gentamicin 2.5mg/kg q8h + Metronidazole 10mg/kg q8h",
+        calc: [
+          { drug: "Ampicillin", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q6h" },
+          { drug: "Gentamicin", dose: 2.5, unit: "mg/kg/dose", route: "IV", freq: "q8h" },
+          { drug: "Metronidazole", dose: 10, unit: "mg/kg/dose", route: "IV", freq: "q8h" }
+        ],
+        alternatives: "",
+        notes: [
+          "Caused by perforation of a viscus (e.g., ruptured appendix, perforated ulcer).",
+          "Requires urgent surgical consultation for source control.",
+          "Empiric coverage must target both Gram-negative rods and anaerobes."
+        ]
+      }
+    ]
+  },
+  {
+    id: "uti",
+    system: "Urinary Tract (UTI)",
+    icon: <Droplets className="w-8 h-8" />,
+    color: "bg-yellow-100 text-yellow-600",
+    conditions: [
+      {
+        name: "Cystitis",
+        pathogens: "E. coli, Klebsiella, Proteus",
+        treatment: "Nitrofurantoin 5-7 mg/kg/day PO q6h",
+        calc: [{ drug: "Nitrofurantoin", dose: 6, unit: "mg/kg/day (avg)", route: "PO", freq: "q6h (Divide daily dose by 4)" }],
+        alternatives: "Cefuroxime 15 mg/kg/dose PO BID",
+        notes: [
+          "Diagnosis requires a urine culture (e.g., midstream, catheter sample) with colony count >50,000 to >100,000.",
+          "If treatment is empirical, modify based on susceptibility results."
+        ]
+      },
+      {
+        name: "Pyelonephritis",
+        pathogens: "E. coli, Klebsiella, Proteus, Pseudomonas",
+        treatment: "Ceftriaxone 50 mg/kg/dose IV q12h",
+        calc: [{ drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" }],
+        alternatives: "",
+        notes: [
+          "Patients with fever, vomiting, or signs of systemic illness should be admitted for IV antibiotics.",
+          "Perform renal ultrasound and/or voiding cystourethrogram (VCUG) after resolution to rule out underlying anomalies."
+        ]
+      },
+      {
+        name: "Recurrent UTI Prophylaxis",
+        pathogens: "Grade 3-4 Reflux Only",
+        treatment: "TMP/SMX 2 mg/kg/day q24h",
+        calc: [{ drug: "TMP/SMX", dose: 2, unit: "mg/kg/day", route: "PO", freq: "q24h" }],
+        alternatives: "Nitrofurantoin 2 mg/kg/dose q24h",
+        notes: [
+          "Prophylaxis is generally reserved for high-grade Vesicoureteral Reflux (VUR) or recurrent, complicated UTIs.",
+          "Long-term use requires careful monitoring for side effects and resistance."
+        ]
+      }
+    ]
+  },
+  {
+    id: "bone",
+    system: "Osteoarthritis",
+    icon: <Bone className="w-8 h-8" />,
+    color: "bg-teal-100 text-teal-600",
+    conditions: [
+      {
+        name: "Osteoarthritis (All Ages)",
+        pathogens: "S. aureus, S. Pneumo",
+        treatment: "Clindamycin 10 mg/kg/dose IV q8h",
+        calc: [{ drug: "Clindamycin", dose: 10, unit: "mg/kg/dose", route: "IV", freq: "q8h" }],
+        alternatives: "Add Ceftriaxone for non-immunized",
+        notes: [
+          "Requires urgent Orthopedic Surgery consultation for possible irrigation and debridement.",
+          "Obtain blood cultures and joint aspirate for Gram stain, cell count, and culture prior to IV antibiotics."
+        ]
+      },
+      {
+        name: "Sickle Cell Anemia OA",
+        pathogens: "S. aureus, S. Pneumo, Salmonella",
+        treatment: "Clindamycin 10 mg/kg q8h + Ceftriaxone 50 mg/kg q12h",
+        calc: [
+          { drug: "Clindamycin", dose: 10, unit: "mg/kg/dose", route: "IV", freq: "q8h" },
+          { drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" }
+        ],
+        alternatives: "",
+        notes: [
+          "Patients with Sickle Cell Disease have a higher risk of Osteomyelitis caused by Salmonella.",
+          "Empiric therapy must cover both S. aureus and Salmonella (typically using a third-generation cephalosporin)."
+        ]
+      }
+    ]
+  },
+  {
+    id: "sepsis",
+    system: "Septicemia / Bacteremia",
+    icon: <ShieldAlert className="w-8 h-8" />,
+    color: "bg-red-100 text-red-600",
+    conditions: [
+      {
+        name: ">3 months (Community Acquired)",
+        pathogens: "S. pneumo, Meningococcus, S. aureus",
+        treatment: "Ceftriaxone 50 mg/kg/dose q12h",
+        calc: [{ drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" }],
+        alternatives: "Add Vancomycin in severely ill.",
+        notes: [
+          "If the patient is severely ill or in shock, always treat first (fluid bolus, antibiotics) before completing investigations.",
+          "Blood cultures are mandatory prior to antibiotic administration."
+        ]
+      },
+      {
+        name: "Hospital Acquired (>48h)",
+        pathogens: "Pseudomonas, Klebsiella, MRSA",
+        treatment: "Tazocin 100 mg/kg/dose q8h ± Vancomycin 15 mg/kg/dose q6h",
+        calc: [
+          { drug: "Tazocin", dose: 100, unit: "mg/kg/dose", route: "IV", freq: "q8h" },
+          { drug: "Vancomycin", dose: 15, unit: "mg/kg/dose", route: "IV", freq: "q6h" }        ],
+        alternatives: "",
+        notes: [
+          "Empiric therapy must cover MDROs common in the hospital setting (Pseudomonas, MRSA).",
+          "Review all lines, drains, and potential sources of infection."
+        ]
+      },
+      {
+        name: "Septic Shock (HA + Shock)",
+        pathogens: "MRSA, ESBL",
+        treatment: "Meropenem 40 mg/kg/dose q8h + Vancomycin 15 mg/kg/dose q6h",
+        calc: [
+          { drug: "Meropenem", dose: 40, unit: "mg/kg/dose", route: "IV", freq: "q8h" },
+          { drug: "Vancomycin", dose: 15, unit: "mg/kg/dose", route: "IV", freq: "q6h" }
+        ],
+        alternatives: "",
+        notes: [
+          "Requires immediate management in the Pediatric ICU (PICU) and consultation with ID/Critical Care.",
+          "Start fluid boluses and vasopressors if needed; do not delay high-dose broad-spectrum antibiotics."
+        ]
+      }
+    ]
+  },
+  {
+    id: "cns",
+    system: "CNS (Meningitis)",
+    icon: <Brain className="w-8 h-8" />,
+    color: "bg-indigo-100 text-indigo-600",
+    conditions: [
+      {
+        name: "Meningitis (Older Children)",
+        pathogens: "S. pneumoniae, N. meningitidis",
+        treatment: "Ceftriaxone 50 mg/kg/dose q12h",
+        calc: [{ drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" }],
+        alternatives: "Critical: Add Vancomycin",
+        notes: [
+          "Lumbar puncture (LP) for CSF analysis and culture is essential for diagnosis.",
+          "Dexamethasone should be considered (0.15 mg/kg/dose q6h IV for 4 days) before or with the first dose of antibiotics, particularly for suspected Pneumococcal meningitis."
+        ]
+      },
+      {
+        name: "Meningo-Encephalitis",
+        pathogens: "S. pneumo, N. meningitidis, HSV",
+        treatment: "Ceftriaxone 50 mg/kg q12h + Acyclovir 20 mg/kg q8h",
+        calc: [
+          { drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" },
+          { drug: "Acyclovir", dose: 20, unit: "mg/kg/dose", route: "IV", freq: "q8h" }
+        ],
+        alternatives: "",
+        notes: [
+          "Empiric therapy must cover bacterial pathogens and HSV (Acyclovir).",
+          "Ensure direct communication with the lab to receive and process PCR-meningitis panel promptly."
+        ]
+      },
+      {
+        name: "V-P Shunt Infection",
+        pathogens: "CoNS, GNR",
+        treatment: "Ceftazidime 50 mg/kg q8h + Vancomycin 15 mg/kg q6h",
+        calc: [
+          { drug: "Ceftazidime", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q8h" },
+          { drug: "Vancomycin", dose: 15, unit: "mg/kg/dose", route: "IV", freq: "q6h" }
+        ],
+        alternatives: "",
+        notes: [
+          "Requires neurosurgical consultation—shunt removal is often necessary.",
+          "Obtain CSF cultures from the shunt reservoir (if accessible) and blood cultures."
+        ]
+      }
+    ]
+  }
+];
+
+// --- EXTRACTED COMPONENT DEFINITIONS ---
+
+const Header = ({ goHome, showBack, title, onMenuClick }) => (
+  <header className="bg-blue-900 text-white p-4 shadow-lg sticky top-0 z-30">
+    <div className="max-w-4xl mx-auto flex justify-between items-center">
+      <div className="flex items-center gap-3">
+        {showBack ? (
+          <button onClick={goHome} className="p-1 hover:bg-white/20 rounded-full transition">
+            <ChevronLeft size={28} />
+          </button>
+        ) : (
+          <div className="bg-white/20 p-2 rounded-lg">
+            <Pill className="w-6 h-6" />
+          </div>
+        )}
+        <div>
+          <h1 className="text-lg font-bold leading-tight">{title}</h1>
+          {!showBack && <p className="text-xs text-blue-200">SMC Pediatric Guidelines</p>}
+        </div>
+      </div>
+      <button className="md:hidden p-2 hover:bg-white/10 rounded" onClick={onMenuClick}>
+        <Menu size={24} />
+      </button>
+    </div>
+  </header>
+);
+
+const HomeView = ({ data, onSelectSystem }) => (
+  // Changed from grid layout to vertical stacked list layout
+  <div className="p-4 space-y-3 max-w-lg mx-auto animate-fadeIn"> 
+    {data.map((sys) => (
+      <button
+        key={sys.id}
+        onClick={() => onSelectSystem(sys)}
+        className="w-full flex items-center p-4 bg-white rounded-xl shadow-sm border border-slate-100 hover:shadow-md hover:border-blue-500 transition-all group"
+      >
+        <div className={`p-2 rounded-lg transition-transform mr-4 ${sys.color} bg-opacity-40`}>
+          {sys.icon}
+        </div>
+        <span className="font-semibold text-lg text-slate-700 text-left">{sys.system}</span>
+        <ChevronRight className="ml-auto text-slate-300 group-hover:text-blue-500" />
+      </button>
+    ))}
+  </div>
+);
+
+const ListView = ({ selectedSystem, searchTerm, setSearchTerm, onSelectCondition }) => {
+  const filteredConditions = useMemo(() => {
+    if (!selectedSystem) return [];
+    if (!searchTerm) return selectedSystem.conditions;
+    return selectedSystem.conditions.filter(c => 
+      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.pathogens.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [selectedSystem, searchTerm]);
+
+  return (
+    <div className="p-4 space-y-4 animate-fadeIn">
+       <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          <input
+            type="text"
+            placeholder={`Search ${selectedSystem?.system}...`}
+            className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 shadow-sm outline-none focus:ring-2 focus:ring-blue-500"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+      {filteredConditions.map((cond, idx) => (
+        <button
+          key={idx}
+          onClick={() => onSelectCondition(cond)}
+          className="w-full bg-white text-left p-4 rounded-xl shadow-sm border border-slate-100 hover:border-blue-300 transition-all flex justify-between items-center group"
+        >
+          <div>
+            <h3 className="font-bold text-slate-800">{cond.name}</h3>
+            <p className="text-xs text-slate-500 mt-1 truncate max-w-[250px] md:max-w-md">
+              {cond.pathogens}
+            </p>
+          </div>
+          <ChevronRight className="text-slate-300 group-hover:text-blue-500" />
+        </button>
+      ))}
+      {filteredConditions.length === 0 && (
+        <div className="text-center text-slate-400 py-10">No conditions found.</div>
+      )}
+    </div>
+  );
+};
+
+const DetailView = ({ condition, weight, setWeight }) => {
+  if (!condition) return null;
+
+  return (
+    <div className="p-4 pb-20 max-w-3xl mx-auto animate-fadeIn">
+      {/* Title & Pathogens */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">{condition.name}</h2>
+        <div className="flex gap-2 items-baseline">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Suspected Pathogens</span>
+        </div>
+        <p className="text-slate-600 font-medium mt-1">{condition.pathogens}</p>
+      </div>
+
+      {/* CALCULATOR SECTION - Layout Optimized for Stability */}
+      <div className="bg-blue-600 rounded-2xl shadow-lg p-6 mb-6 text-white relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-4 opacity-10">
+          <Activity size={100} />
+        </div>
+        
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+          <Stethoscope className="w-5 h-5" /> Dosage Calculator
+        </h3>
+        
+        <div className="flex items-center gap-4 mb-6">
+          <label className="text-blue-100 text-sm font-medium whitespace-nowrap">Patient Weight:</label>
+          <div className="relative flex-1 max-w-[150px]">
+            <input
+              // Key change for keyboard stability: input is controlled and does not cause
+              // the parent component to unnecessarily re-render the whole view.
+              type="number"
+              inputMode="decimal" // Ensures numeric keyboard on mobile
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              placeholder="0"
+              className="w-full px-4 py-2 rounded-lg text-slate-900 font-bold outline-none focus:ring-4 focus:ring-blue-400 transition"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-sm">kg</span>
+          </div>
+        </div>
+
+        {/* Calculated Results */}
+        <div className="space-y-3">
+          {condition.calc ? (
+            condition.calc.map((drug, i) => {
+              const w = parseFloat(weight);
+              const maxDose = MAX_DOSES[drug.drug];
+              
+              let calculatedAmt = w ? (drug.dose * w) : NaN;
+              let isCapped = false;
+
+              if (!isNaN(calculatedAmt) && maxDose !== undefined) {
+                  // Capping logic
+                  if (calculatedAmt > maxDose) {
+                      calculatedAmt = maxDose;
+                      isCapped = true;
+                  }
+                  calculatedAmt = calculatedAmt.toFixed(0);
+              } else {
+                  calculatedAmt = '---';
+              }
+              
+              return (
+                <div key={i} className={`bg-white/10 rounded-lg p-3 backdrop-blur-sm border ${isCapped ? 'border-amber-400/80' : 'border-white/20'} transition-all`}>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="font-bold text-lg block">{drug.drug}</span>
+                      <span className="text-xs text-blue-200 opacity-80">
+                        {drug.dose} {drug.unit} • {drug.route} • {drug.freq}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-2xl font-bold block ${isCapped ? 'text-amber-300' : 'text-white'}`}>{calculatedAmt} <span className="text-sm font-normal">mg</span></span>
+                      <span className="text-xs text-blue-200">
+                        {isCapped ? 'MAX DOSE CAPPED' : (drug.unit.includes('day') ? 'Total Daily Dose' : 'Per Dose')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-blue-200 text-sm italic">
+              Specific calculator not available for this condition. See treatment text below.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Standard Text Details */}
+      <div className="space-y-4">
+        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+          <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Guideline Treatment</h4>
+          <p className="text-slate-800 text-lg leading-relaxed">{condition.treatment}</p>
+        </div>
+
+        {condition.alternatives && (
+          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+            <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Alternatives</h4>
+            <p className="text-slate-700">{condition.alternatives}</p>
+          </div>
+        )}
+
+        {/* Short Notes Section - Now features specific clinical advice */}
+        <div className="bg-amber-50 rounded-xl p-5 border border-amber-100">
+          <h4 className="text-sm font-bold text-amber-600 uppercase tracking-wider mb-3 flex items-center gap-2">
+            Clinical Short Notes
+          </h4>
+          <ul className="list-disc list-inside text-slate-700 space-y-2 text-sm">
+             {/* Specific Notes populated from data */}
+             {condition.notes && condition.notes.map((n, idx) => (
+                <li key={idx} className="text-slate-700">{n}</li>
+             ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- MAIN APP COMPONENT ---
+
+const PediatricAbxApp = () => {
+  const [view, setView] = useState('home'); // home, list, detail
+  const [selectedSystem, setSelectedSystem] = useState(null);
+  const [selectedCondition, setSelectedCondition] = useState(null);
+  const [weight, setWeight] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Reset calculator when changing conditions
+  useEffect(() => {
+    setWeight('');
+  }, [selectedCondition]);
+
+  const handleSystemClick = (sys) => {
+    setSelectedSystem(sys);
+    setView('list');
+    setSearchTerm('');
+  };
+
+  const handleConditionClick = (cond) => {
+    setSelectedCondition(cond);
+    setView('detail');
+  };
+
+  const goBack = () => {
+    if (view === 'detail') {
+      setView('list');
+      setSelectedCondition(null);
+    } else if (view === 'list') {
+      setView('home');
+      setSelectedSystem(null);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
+      <Header 
+        title={view === 'home' ? 'Pediatric Antibiotics' : (selectedSystem?.system || 'Back')} 
+        showBack={view !== 'home'} 
+        goHome={goBack} 
+        onMenuClick={() => {}}
+      />
+
+      <main className="max-w-4xl mx-auto">
+        {view === 'home' && (
+          <HomeView 
+            data={GUIDELINES_DATA} 
+            onSelectSystem={handleSystemClick} 
+          />
+        )}
+        
+        {view === 'list' && (
+          <ListView 
+            selectedSystem={selectedSystem} 
+            searchTerm={searchTerm} 
+            setSearchTerm={setSearchTerm} 
+            onSelectCondition={handleConditionClick} 
+          />
+        )}
+        
+        {view === 'detail' && (
+          <DetailView 
+            condition={selectedCondition} 
+            weight={weight} 
+            setWeight={setWeight} 
+          />
+        )}
+      </main>
+
+      {/* Footer/Safety */}
+      <footer className="p-6 text-center text-slate-400 text-xs">
+        <p className="mb-2">Calculations capped at established maximum doses. Always confirm official guidelines.</p>
+        <div className="flex justify-center items-center gap-2 text-amber-600 opacity-70">
+          <ShieldAlert size={14} />
+          <span>Double check all doses.</span>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+export default PediatricAbxApp;
