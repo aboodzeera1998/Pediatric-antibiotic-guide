@@ -13,34 +13,22 @@ import {
   Pill, 
   Bone, 
   Droplets,
-  AirVent, // Corrected icon for Lungs/Respiratory System
+  AirVent,
+  Target,
+  FlaskConical,
 } from 'lucide-react';
 
 // --- MAX DOSES CONFIGURATION ---
-// Max doses are given as a CAP PER DOSE unless specified as a daily cap in the drug's 'calc' unit (mg/kg/day).
 const MAX_DOSES = {
   // Max per dose in mg
-  "Augmentin": 2000,
-  "Clindamycin": 800, 
-  "Cefepime": 2000,
-  "Vancomycin": 1000, 
-  "Ceftriaxone": 2000,
-  "Amoxicillin": 1500,
-  "Cefuroxime": 500, // Oral Max
-  "Cefotaxime": 2000,
-  "Azithromycin": 500, // Max Daily Dose
-  "Tazocin": 4500,
-  "Meropenem": 2000,
-  "Gentamicin": 100,
-  "Metronidazole": 500,
-  "Nitrofurantoin": 100,
-  "TMP/SMX": 320, 
-  "Ceftazidime": 2000,
-  "Ampicillin": 2000,
-  "Acyclovir": 500, 
+  "Augmentin": 2000, "Clindamycin": 800, "Cefepime": 2000, "Vancomycin": 1000, 
+  "Ceftriaxone": 2000, "Amoxicillin": 1500, "Cefuroxime": 500, "Cefotaxime": 2000,
+  "Azithromycin": 500, "Tazocin": 4500, "Meropenem": 2000, "Gentamicin": 100,
+  "Metronidazole": 500, "Nitrofurantoin": 100, "TMP/SMX": 320, "Ceftazidime": 2000,
+  "Ampicillin": 2000, "Acyclovir": 500, 
 };
 
-// --- DATA STRUCTURE ---
+// --- DATA STRUCTURE (Main Guidelines) ---
 const GUIDELINES_DATA = [
   {
     id: "general",
@@ -54,7 +42,7 @@ const GUIDELINES_DATA = [
         treatment: "Obtain cultures prior to starting/modifying antibiotics.",
         alternatives: "Tailor Abx to narrow spectrum once culture is ready.",
         notes: [
-          "If serum trough level (Vanc, Gent) is indicated, do it before the 4th dose.",
+          "If serum trough level (Vancomycin, Gentamicin) is indicated, do it before the 4th dose.",
           "Do not postpone subsequent doses unless renal function is abnormal.",
           "If renal function is abnormal: Do not administer until safe trough level confirmed.",
           "Febrile Neutropenia applies to oncology patients only."
@@ -255,7 +243,6 @@ const GUIDELINES_DATA = [
   {
     id: "resp",
     system: "Respiratory",
-    // Corrected to AirVent icon
     icon: <AirVent className="w-8 h-8" />, 
     color: "bg-blue-100 text-blue-600",
     conditions: [
@@ -492,7 +479,8 @@ const GUIDELINES_DATA = [
         treatment: "Tazocin 100 mg/kg/dose q8h ± Vancomycin 15 mg/kg/dose q6h",
         calc: [
           { drug: "Tazocin", dose: 100, unit: "mg/kg/dose", route: "IV", freq: "q8h" },
-          { drug: "Vancomycin", dose: 15, unit: "mg/kg/dose", route: "IV", freq: "q6h" }        ],
+          { drug: "Vancomycin", dose: 15, unit: "mg/kg/dose", route: "IV", freq: "q6h" }
+        ],
         alternatives: "",
         notes: [
           "Empiric therapy must cover MDROs common in the hospital setting (Pseudomonas, MRSA).",
@@ -524,9 +512,12 @@ const GUIDELINES_DATA = [
       {
         name: "Meningitis (Older Children)",
         pathogens: "S. pneumoniae, N. meningitidis",
-        treatment: "Ceftriaxone 50 mg/kg/dose q12h",
-        calc: [{ drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" }],
-        alternatives: "Critical: Add Vancomycin",
+        treatment: "Ceftriaxone 50 mg/kg/dose q12h (Add Vanc in critical cases)",
+        calc: [
+          { drug: "Ceftriaxone", dose: 50, unit: "mg/kg/dose", route: "IV", freq: "q12h" },
+          { drug: "Vancomycin (Critical)", dose: 15, unit: "mg/kg/dose", route: "IV", freq: "q6h" }
+        ],
+        alternatives: "",
         notes: [
           "Lumbar puncture (LP) for CSF analysis and culture is essential for diagnosis.",
           "Dexamethasone should be considered (0.15 mg/kg/dose q6h IV for 4 days) before or with the first dose of antibiotics, particularly for suspected Pneumococcal meningitis."
@@ -561,12 +552,33 @@ const GUIDELINES_DATA = [
         ]
       }
     ]
-  }
+  },
 ];
 
-// --- EXTRACTED COMPONENT DEFINITIONS ---
+// --- STATIC VANCOMYCIN GUIDANCE (Fixed Formatting) ---
+const STATIC_VANC_GUIDANCE = {
+    "Standard Initial Dosing (Non-Neonatal)": [
+        "**Dose:** 15 mg/kg per dose IV.",
+        "**Frequency:** Every 6 hours (q6h) for younger children with normal renal function (higher clearance).",
+        "**Frequency:** Every 8 to 12 hours (q8h to q12h) for older children/adolescents or those with lower clearance.",
+        "**Maximum Single Dose (Cap):** 1000 mg (1 gram)."
+    ],
+    "Therapeutic Trough Goals (Serious Infections)": [
+        "**Target Goal:** 15 to 20 mcg/mL.",
+        "**When to Target High:** Used for serious, complicated infections such as Meningitis, Endocarditis, Osteomyelitis, Septic Arthritis, Hospital-Acquired Pneumonia, or severe Sepsis/Bacteremia.",
+        "**Lower Goal (10-15 mcg/mL):** Acceptable for less severe infections or when targeting high levels causes toxicity (nephrotoxicity)."
+    ],
+    "Trough Level Timing (Monitoring)": [
+        "**Initial Trough Draw:** Must be obtained before the **4th or 5th dose** to ensure steady-state is reached (when drug clearance equals drug input).",
+        "**Exact Timing:** The blood draw must occur **30 minutes prior** to the administration of the next scheduled dose.",
+        "**Follow-up Monitoring:** Check troughs weekly once stable, or immediately after any significant change in the patient's renal function (e.g., Creatinine clearance)."
+    ]
+};
 
-const Header = ({ goHome, showBack, title, onMenuClick }) => (
+
+// --- HEADER AND MAIN VIEWS ---
+
+const Header = ({ goHome, showBack, title, onVancInfoClick }) => (
   <header className="bg-blue-900 text-white p-4 shadow-lg sticky top-0 z-30">
     <div className="max-w-4xl mx-auto flex justify-between items-center">
       <div className="flex items-center gap-3">
@@ -584,15 +596,17 @@ const Header = ({ goHome, showBack, title, onMenuClick }) => (
           {!showBack && <p className="text-xs text-blue-200">SMC Pediatric Guidelines</p>}
         </div>
       </div>
-      <button className="md:hidden p-2 hover:bg-white/10 rounded" onClick={onMenuClick}>
-        <Menu size={24} />
+      <button 
+        onClick={() => onVancInfoClick('vancInfo')}
+        className="p-2 bg-white text-blue-800 rounded-full flex items-center gap-2 text-sm font-semibold hover:bg-blue-100 transition"
+      >
+        <Target size={20} /> <span className="hidden sm:inline">Vanc Guide</span>
       </button>
     </div>
   </header>
 );
 
 const HomeView = ({ data, onSelectSystem }) => (
-  // Changed from grid layout to vertical stacked list layout
   <div className="p-4 space-y-3 max-w-lg mx-auto animate-fadeIn"> 
     {data.map((sys) => (
       <button
@@ -683,10 +697,8 @@ const DetailView = ({ condition, weight, setWeight }) => {
           <label className="text-blue-100 text-sm font-medium whitespace-nowrap">Patient Weight:</label>
           <div className="relative flex-1 max-w-[150px]">
             <input
-              // Key change for keyboard stability: input is controlled and does not cause
-              // the parent component to unnecessarily re-render the whole view.
               type="number"
-              inputMode="decimal" // Ensures numeric keyboard on mobile
+              inputMode="decimal" 
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
               placeholder="0"
@@ -701,7 +713,7 @@ const DetailView = ({ condition, weight, setWeight }) => {
           {condition.calc ? (
             condition.calc.map((drug, i) => {
               const w = parseFloat(weight);
-              const maxDose = MAX_DOSES[drug.drug];
+              const maxDose = MAX_DOSES[drug.drug.split(' ')[0]]; // Handle (Critical) modifier
               
               let calculatedAmt = w ? (drug.dose * w) : NaN;
               let isCapped = false;
@@ -775,10 +787,55 @@ const DetailView = ({ condition, weight, setWeight }) => {
   );
 };
 
+// --- VANCOMYCIN INFO VIEW ---
+
+const VancInfoView = ({ setView }) => {
+    const sections = STATIC_VANC_GUIDANCE;
+
+    return (
+        <div className="p-4 pb-20 max-w-3xl mx-auto animate-fadeIn">
+            <div className="flex items-center gap-3 mb-6">
+                <button onClick={() => setView('home')} className="p-2 rounded-full hover:bg-slate-200"><ChevronLeft size={24} /></button>
+                <h2 className="text-2xl font-bold text-blue-800">Vancomycin Dosing and Monitoring Guide</h2>
+            </div>
+
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded-r-lg">
+                <h3 className="font-semibold text-blue-800 flex items-center gap-2"><Target size={20}/> Evidence-Based Guidance</h3>
+                <p className="text-sm text-blue-700 mt-1">This static guide summarizes current pediatric recommendations for Vancomycin use and therapeutic drug monitoring.</p>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-lg p-6 space-y-6">
+                {Object.entries(sections).map(([title, points]) => (
+                    <div key={title} className="space-y-3 border-b border-slate-100 pb-4 last:border-b-0">
+                        <h4 className="text-xl font-bold text-slate-700 flex items-center gap-2">
+                            {title.includes('Dosing') && <Pill size={20}/>}
+                            {title.includes('Goals') && <Target size={20}/>}
+                            {title.includes('Timing') && <FlaskConical size={20}/>}
+                            {title}
+                        </h4>
+                        <ul className="list-disc list-outside ml-6 text-slate-600 space-y-2">
+                            {points.map((point, pIdx) => (
+                                <li key={pIdx} dangerouslySetInnerHTML={{ __html: point }}></li>
+                            ))}
+                        </ul>
+                        {title.includes('Timing') && (
+                            <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                <p className="font-semibold text-slate-700 mb-2">Visual Reference: Trough Timing Protocol</p>
+                                
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+
 // --- MAIN APP COMPONENT ---
 
 const PediatricAbxApp = () => {
-  const [view, setView] = useState('home'); // home, list, detail
+  const [view, setView] = useState('home'); // home, list, detail, vancInfo
   const [selectedSystem, setSelectedSystem] = useState(null);
   const [selectedCondition, setSelectedCondition] = useState(null);
   const [weight, setWeight] = useState('');
@@ -800,6 +857,13 @@ const PediatricAbxApp = () => {
     setView('detail');
   };
 
+  const goHome = () => {
+    setSearchTerm('');
+    setSelectedSystem(null);
+    setSelectedCondition(null);
+    setView('home');
+  };
+
   const goBack = () => {
     if (view === 'detail') {
       setView('list');
@@ -807,42 +871,53 @@ const PediatricAbxApp = () => {
     } else if (view === 'list') {
       setView('home');
       setSelectedSystem(null);
+    } else if (view === 'vancInfo') {
+        setView('home');
     }
+  };
+
+  const renderView = () => {
+    switch (view) {
+        case 'vancInfo':
+            return <VancInfoView setView={setView} />;
+        case 'home':
+            return <HomeView data={GUIDELINES_DATA} onSelectSystem={handleSystemClick} />;
+        case 'list':
+            return <ListView 
+                selectedSystem={selectedSystem} 
+                searchTerm={searchTerm} 
+                setSearchTerm={setSearchTerm} 
+                onSelectCondition={handleConditionClick} 
+            />;
+        case 'detail':
+            return <DetailView 
+                condition={selectedCondition} 
+                weight={weight} 
+                setWeight={setWeight} 
+            />;
+        default:
+            return <HomeView data={GUIDELINES_DATA} onSelectSystem={handleSystemClick} />;
+    }
+  };
+
+  const getHeaderTitle = () => {
+    if (view === 'vancInfo') return 'Vancomycin Guide';
+    if (view === 'home') return 'Pediatric Antibiotics';
+    if (selectedSystem) return selectedSystem.system;
+    return 'Back';
   };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
       <Header 
-        title={view === 'home' ? 'Pediatric Antibiotics' : (selectedSystem?.system || 'Back')} 
+        title={getHeaderTitle()} 
         showBack={view !== 'home'} 
         goHome={goBack} 
-        onMenuClick={() => {}}
+        onVancInfoClick={() => setView('vancInfo')}
       />
 
       <main className="max-w-4xl mx-auto">
-        {view === 'home' && (
-          <HomeView 
-            data={GUIDELINES_DATA} 
-            onSelectSystem={handleSystemClick} 
-          />
-        )}
-        
-        {view === 'list' && (
-          <ListView 
-            selectedSystem={selectedSystem} 
-            searchTerm={searchTerm} 
-            setSearchTerm={setSearchTerm} 
-            onSelectCondition={handleConditionClick} 
-          />
-        )}
-        
-        {view === 'detail' && (
-          <DetailView 
-            condition={selectedCondition} 
-            weight={weight} 
-            setWeight={setWeight} 
-          />
-        )}
+        {renderView()}
       </main>
 
       {/* Footer/Safety */}
